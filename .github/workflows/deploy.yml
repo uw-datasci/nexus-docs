@@ -36,9 +36,9 @@ jobs:
     with:
       node-version: ${{ needs.setup.outputs.node-version }}
       pnpm-version: ${{ needs.setup.outputs.pnpm-version }}
-      lint-command: pnpm lint
       typecheck-command: pnpm typecheck
-
+      lint-command: pnpm lint
+      
   deploy:
     name: Deploy to Vercel
     needs: [ setup, quality ]
