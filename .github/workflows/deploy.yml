@@ -1,11 +1,9 @@
 name: Deploy Documentation
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - "apps/docs/**"
-      - ".github/workflows/deploy-docs.yml"
+  # push:
+  #   branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -38,19 +36,19 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
-      - name: Install docs dependencies
-        run: pnpm install --filter docs... --frozen-lockfile
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Build docs
-        run: pnpm --filter docs run build
+        run: pnpm run build
 
       - name: Add .nojekyll
-        run: touch apps/docs/out/.nojekyll
+        run: touch out/.nojekyll
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: ./apps/docs/out
+          path: ./out
 
   deploy:
     needs: build
