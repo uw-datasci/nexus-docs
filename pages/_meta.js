@@ -8,4 +8,5 @@ export default {
   guides: "Guides",
   packages: "Packages",
   changelog: "Timeline",
+  unauthorized: { display: "hidden" },
 };

@@ -6,8 +6,6 @@ const withNextra = nextra({
 });
 
 export default withNextra({
-  output: "export",
-  images: { unoptimized: true },
   basePath: "",
   assetPrefix: "",
   reactStrictMode: true,

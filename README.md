@@ -1,12 +1,18 @@
 # UWDSC Documentation Site
 
-Documentation website for the UW Data Science Club, built with [Nextra](https://nextra.site/) and deployed to GitHub Pages at [docs.uwdatascience.ca](https://docs.uwdatascience.ca).
+Documentation website for the UW Data Science Club, built with [Nextra](https://nextra.site/) and deployed to Vercel at [docs.uwdatascience.ca](https://docs.uwdatascience.ca).
+
+Access is restricted to signed-in `exec`/`admin` members via the shared
+uwdatascience.ca Supabase session — see `middleware.ts`.
 
 ## Development
 
 ```bash
 # Install dependencies
 pnpm install
+
+# Copy env vars (fill in real values from the shared secrets store)
+cp .env.example .env.local
 
 # Start dev server
 pnpm dev
@@ -19,8 +25,6 @@ The documentation will be available at http://localhost:3000
 ```bash
 pnpm build
 ```
-
-The static site will be generated in the `out/` directory.
 
 ## Linting & Type Checking
 
@@ -62,13 +66,21 @@ export default {
 
 ## Deployment
 
-The documentation is automatically deployed to GitHub Pages when changes are pushed to the `main` branch (see `.github/workflows/deploy.yml`).
+The documentation is deployed to [Vercel](https://vercel.com/), which deploys on every push to `main` and generates preview deployments for PRs.
 
-### GitHub Pages Setup
+### Environment Variables (Vercel Project Settings)
 
-1. Go to repository Settings → Pages
-2. Source: GitHub Actions
-3. The site will be available at [docs.uwdatascience.ca](https://docs.uwdatascience.ca)
+- `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` — same shared Supabase project used by `uwdsc-website-v3` and `estimathon-v2`
+- `NEXT_PUBLIC_MAIN_SITE_URL` — `https://uwdatascience.ca`
+- `NEXT_PUBLIC_AUTH_COOKIE_DOMAIN` — `.uwdatascience.ca`
+
+## Auth
+
+`middleware.ts` gates every route: it validates the shared
+`sb-*-auth-token` cookie (set by uwdatascience.ca on login) via Supabase, and
+requires `app_metadata.role` to be `exec` or `admin`. Unauthenticated visitors
+are redirected to `https://uwdatascience.ca/login?redirect=...`; signed-in
+`member`s are redirected to `/unauthorized`.
 
 ## Technologies
 
