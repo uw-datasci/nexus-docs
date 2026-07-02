@@ -8,5 +8,8 @@ export default {
   guides: "Guides",
   packages: "Packages",
   changelog: "Timeline",
-  unauthorized: { display: "hidden" },
+  unauthorized: {
+    display: "hidden",
+    theme: { sidebar: false, toc: false, breadcrumb: false, pagination: false },
+  },
 };
