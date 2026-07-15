@@ -1,38 +1,71 @@
-name: Auto-Update Docs on Merge
+name: Auto-Update Docs on Dispatch
 
 on:
-  # pull_request:
-  #   types: [closed]
-  #   branches:
-  #     - main
+  repository_dispatch:
+    types: [update-docs]
   workflow_dispatch:
+    inputs:
+      app_name:
+        description: "Display name of the application, used as the changelog heading (e.g. 🎯 Main Website)"
+        required: true
+        type: string
+      section_map:
+        description: "Optional '<path-prefix> => <heading>' lines for repos hosting multiple apps"
+        required: false
+        type: string
+        default: ""
+      repo:
+        description: "Source repository (owner/name)"
+        required: true
+        type: string
+      pr_number:
+        description: "Merged PR number in the source repository"
+        required: true
+        type: string
+      pr_title:
+        description: "Merged PR title"
+        required: true
+        type: string
+      merge_sha:
+        description: "Merge commit SHA of the merged PR"
+        required: true
+        type: string
+      semester_tag:
+        description: "Semester tag from the PR labels (e.g. S26), empty for general doc updates"
+        required: false
+        type: string
+        default: ""
 
 jobs:
-  update-docs-after-merge:
-    if: |
-      github.event.pull_request.merged == true &&
-      github.event.pull_request.user.login != 'github-actions[bot]' &&
-      !startsWith(github.event.pull_request.title, '📚 Auto-Docs Update') &&
-      !startsWith(github.event.pull_request.head.ref, 'auto-docs/merge-') &&
-      !contains(github.event.pull_request.labels.*.name, 'no documentation')
+  update-docs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
+    env:
+      APP_NAME: ${{ github.event.client_payload.app_name || inputs.app_name }}
+      SECTION_MAP: ${{ github.event.client_payload.section_map || inputs.section_map }}
+      SOURCE_REPO: ${{ github.event.client_payload.repo || inputs.repo }}
+      PR_NUMBER: ${{ github.event.client_payload.pr_number || inputs.pr_number }}
+      PR_TITLE: ${{ github.event.client_payload.pr_title || inputs.pr_title }}
+      MERGE_SHA: ${{ github.event.client_payload.merge_sha || inputs.merge_sha }}
+      SEMESTER_TAG: ${{ github.event.client_payload.semester_tag || inputs.semester_tag }}
 
     steps:
-      - name: Checkout Main
+      - name: Checkout Docs
+        uses: actions/checkout@v6
+
+      - name: Resolve Source Repo Name
+        id: source
+        run: echo "name=${SOURCE_REPO##*/}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Source Repository
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0
-
-      - name: Extract Semester Tag
-        id: semester
-        run: |
-          # Extract semester tags from PR labels (F25, W26, S26, F26, W27, etc.)
-          SEMESTER_TAG=$(echo '${{ join(github.event.pull_request.labels.*.name, ' ') }}' | grep -oE '(F|W|S)[0-9]{2}' | head -1 || echo "")
-          echo "semester_tag=$SEMESTER_TAG" >> $GITHUB_OUTPUT
-          echo "Found semester tag: $SEMESTER_TAG"
+          repository: ${{ env.SOURCE_REPO }}
+          ref: ${{ env.MERGE_SHA }}
+          path: source
+          fetch-depth: 2
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -45,26 +78,27 @@ jobs:
       - name: Run Copilot to Update Docs
         env:
           GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          SEMESTER_TAG: ${{ steps.semester.outputs.semester_tag }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
+          SOURCE_DIR: source
         run: |
           chmod +x .github/scripts/update-docs.sh
           .github/scripts/update-docs.sh
+
+      - name: Remove Source Checkout
+        run: rm -rf source changes.diff
 
       - name: Create PR with Doc Updates
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "Update docs based on merge #${{ github.event.pull_request.number }}"
-          title: "📚 Auto-Docs Update (Post-Merge)"
-          branch: "auto-docs/merge-${{ github.event.pull_request.number }}"
+          commit-message: "Update docs for ${{ env.SOURCE_REPO }}#${{ env.PR_NUMBER }}"
+          title: "📚 Auto-Docs Update (${{ env.APP_NAME }} #${{ env.PR_NUMBER }})"
+          branch: "auto-docs/${{ steps.source.outputs.name }}-${{ env.PR_NUMBER }}"
           base: main
           delete-branch: true
           body: |
             ### 🤖 Automated Documentation Update
 
-            Triggered by the merge of PR #${{ github.event.pull_request.number }}.
+            Triggered by the merge of ${{ env.SOURCE_REPO }}#${{ env.PR_NUMBER }} (${{ env.PR_TITLE }}).
 
-            **Changes:** Updated `/docs` to match code changes.
+            **App:** ${{ env.APP_NAME }}
+            **Changes:** Updated the docs to match the merged code changes.
