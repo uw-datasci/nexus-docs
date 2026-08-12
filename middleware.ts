@@ -3,7 +3,7 @@ import { createSupabaseMiddlewareClient } from "./lib/supabase";
 
 // Only exec/admin (not member) may access these docs. This mirrors
 // ADMIN_ROLES in uwdsc-website-v3/packages/common/src/constants/roles.ts.
-const ADMIN_ROLES = new Set(["admin", "exec"]);
+const ADMIN_ROLES = new Set(["pres", "admin", "exec"]);
 
 const MAIN_SITE_URL = process.env.NEXT_PUBLIC_MAIN_SITE_URL ?? "https://uwdatascience.ca";
 
