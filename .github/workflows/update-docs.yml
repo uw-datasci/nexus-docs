@@ -30,8 +30,14 @@ on:
         description: "Merge commit SHA of the merged PR"
         required: true
         type: string
+      docs_mode:
+        description: "'changelog' writes one semester page; 'general' scans pages/ instead"
+        required: false
+        type: choice
+        options: [changelog, general]
+        default: changelog
       semester_tag:
-        description: "Semester tag from the PR labels (e.g. S26), empty for general doc updates"
+        description: "Manual override for the term code (e.g. F26). Leave empty to read the active term from public.terms"
         required: false
         type: string
         default: ""
@@ -49,7 +55,7 @@ jobs:
       PR_NUMBER: ${{ github.event.client_payload.pr_number || inputs.pr_number }}
       PR_TITLE: ${{ github.event.client_payload.pr_title || inputs.pr_title }}
       MERGE_SHA: ${{ github.event.client_payload.merge_sha || inputs.merge_sha }}
-      SEMESTER_TAG: ${{ github.event.client_payload.semester_tag || inputs.semester_tag }}
+      DOCS_MODE: ${{ github.event.client_payload.docs_mode || inputs.docs_mode || 'changelog' }}
 
     steps:
       - name: Checkout Docs
@@ -75,10 +81,28 @@ jobs:
       - name: Install Copilot CLI Agent
         run: npm install -g @github/copilot
 
+      - name: Pull Website DB Credentials
+        if: env.DOCS_MODE != 'general'
+        uses: infisical/secrets-action@v1.0.16
+        with:
+          env-slug: prod
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          project-slug: uwdsc-54e-y
+          secret-path: /website/db
+
+      - name: Resolve Active Term
+        id: term
+        if: env.DOCS_MODE != 'general' && inputs.semester_tag == ''
+        run: |
+          chmod +x .github/scripts/resolve-term.sh
+          .github/scripts/resolve-term.sh
+
       - name: Run Copilot to Update Docs
         env:
           GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
           SOURCE_DIR: source
+          SEMESTER_TAG: ${{ inputs.semester_tag || steps.term.outputs.code }}
         run: |
           chmod +x .github/scripts/update-docs.sh
           .github/scripts/update-docs.sh

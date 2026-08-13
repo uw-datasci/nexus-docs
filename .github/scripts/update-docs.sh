@@ -7,9 +7,14 @@ SECTION_MAP="${SECTION_MAP:-}"
 SOURCE_REPO="${SOURCE_REPO:-}"
 SOURCE_DIR="${SOURCE_DIR:-source}"
 MERGE_SHA="${MERGE_SHA:-$1}"
-SEMESTER_TAG="${SEMESTER_TAG:-}"
 PR_NUMBER="${PR_NUMBER:-}"
 PR_TITLE="${PR_TITLE:-}"
+
+# 'changelog' (default) writes a single semester page; 'general' scans pages/ instead.
+# Set from the 'general docs' label on the source PR.
+DOCS_MODE="${DOCS_MODE:-changelog}"
+# Term code (W26, S26, ...) resolved from public.terms by the workflow. Required in changelog mode.
+SEMESTER_TAG="${SEMESTER_TAG:-}"
 
 if [ -z "$MERGE_SHA" ]; then
   echo "Error: MERGE_SHA environment variable or merge SHA argument is required"
@@ -34,14 +39,44 @@ done < "$(dirname "$0")/.diffignore"
 
 git -C "$SOURCE_DIR" diff "$MERGE_SHA^1" "$MERGE_SHA" -- "${EXCLUDE_ARGS[@]}" > changes.diff
 
-# Determine changelog file based on semester tag
+# Resolve the changelog page for this term, scaffolding it on the first PR of a new
+# term. Nobody labels PRs any more, so nothing else would ever create the page.
 CHANGELOG_FILE=""
-if [ -n "$SEMESTER_TAG" ]; then
+if [ "$DOCS_MODE" != "general" ]; then
+  if [ -z "$SEMESTER_TAG" ]; then
+    echo "Error: SEMESTER_TAG is required in changelog mode (resolve it from public.terms first)"
+    exit 1
+  fi
+
   CHANGELOG_FILE="pages/changelog/${SEMESTER_TAG}.mdx"
-  echo "Semester tag found: $SEMESTER_TAG"
+  echo "Active term: $SEMESTER_TAG"
   echo "Will update changelog: $CHANGELOG_FILE"
+
+  if [ ! -f "$CHANGELOG_FILE" ]; then
+    case "${SEMESTER_TAG:0:1}" in
+      F) SEASON_NAME="Fall" ;;
+      W) SEASON_NAME="Winter" ;;
+      S) SEASON_NAME="Spring" ;;
+      *) SEASON_NAME="${SEMESTER_TAG:0:1}" ;;
+    esac
+    SEASON_YEAR="20${SEMESTER_TAG:1:2}"
+
+    mkdir -p "$(dirname "$CHANGELOG_FILE")"
+    cat > "$CHANGELOG_FILE" <<EOF
+# ${SEASON_NAME} ${SEASON_YEAR} Updates
+
+Work across the UWDSC applications. Details will grow as PRs land through the term.
+
+---
+
+_From merged PRs tagged \`${SEMESTER_TAG}\`._
+EOF
+
+    echo "Created new changelog page: $CHANGELOG_FILE"
+    echo "Remember to add '${SEMESTER_TAG}: \"${SEASON_NAME} ${SEASON_YEAR}\"' to pages/changelog/_meta.js"
+  fi
 else
-  echo "No semester tag found. Will update general documentation only."
+  echo "Docs mode: general. Will update general documentation only."
 fi
 
 # Section placement rules for the changelog
@@ -70,10 +105,10 @@ IMPORTANT: Before making any modifications to existing documentation:
 - Only modify existing entries when code changes clearly warrant documentation updates
 - Ensure all modifications accurately reflect the actual code changes"
 
-if [ -n "$SEMESTER_TAG" ] && [ -f "$CHANGELOG_FILE" ]; then
+if [ "$DOCS_MODE" != "general" ]; then
   PROMPT="$PROMPT
 
-CRITICAL: This PR is tagged with semester ${SEMESTER_TAG}. You MUST ONLY update the changelog file at: ${CHANGELOG_FILE}
+CRITICAL: This PR belongs to semester ${SEMESTER_TAG}. You MUST ONLY update the changelog file at: ${CHANGELOG_FILE}
 
 DO NOT modify any other files in the documentation. The PR should show only ONE file changed: ${CHANGELOG_FILE}
 
@@ -96,6 +131,9 @@ The changelog is organized by semester (F25, W26, S26, etc.) and each semester f
 
 ## 🧮 Estimathon
 [Features for the Estimathon app]
+
+## 🏆 CxC
+[Features for the CxC hackathon app]
 
 ---
 
