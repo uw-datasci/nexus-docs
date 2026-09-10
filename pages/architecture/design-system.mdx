@@ -24,15 +24,15 @@ The `packages/ui` directory contains **shared, reusable UI primitives** built wi
 
 ### Available Components
 
-Our UI package includes these shadcn components:
+Our UI package includes these shadcn-derived components (see [UI Package](/packages/ui) for the full list):
 
-- **Layout**: Card, Separator, Aspect Ratio
-- **Navigation**: Navigation Menu, Breadcrumb, Tabs
-- **Forms**: Button, Input, Checkbox, Select, Form
-- **Feedback**: Alert, Toast, Badge, Progress
+- **Layout**: Card, Separator, Scroll Area, Sidebar, Collapsible
+- **Navigation**: Navigation Menu, Tabs
+- **Forms**: Button, Input, Textarea, Checkbox, Radio Group, Switch, Select, Form, Datetime Picker, Calendar
+- **Feedback**: Badge, Sonner (toasts), Skeleton, Spinner, Tooltip
 - **Overlays**: Dialog, Dropdown Menu, Popover, Sheet
-- **Data Display**: Avatar, Table, Accordion
-- **Typography**: Text components with consistent styling
+- **Data Display**: Avatar, Table, Accordion, Chart, Carousel
+- **Marketing**: Galaxy Hero, Glass Surface, Section Title
 
 ### Using Atoms
 
@@ -87,9 +87,9 @@ export function TeamCard({ member }) {
 }
 ```
 
-#### MotionCard (CxC App)
+#### MotionCard (Admin App)
 
-Combines Card with Framer Motion:
+Combines Card with Framer Motion (`apps/admin`'s CXC application/review pages use this pattern):
 
 ```tsx
 import { Card, Button } from "@uwdsc/ui";
@@ -206,7 +206,7 @@ The UI package includes:
 
 - **Radix UI** primitives (headless components)
 - **Tailwind CSS** for styling
-- **Framer Motion** for animations
+- **motion** for animations (the UI package itself uses `motion`, not `framer-motion`; `apps/web` and `apps/admin` separately depend on `framer-motion` for their own components, like the MotionCard example above)
 - **Lucide React** for icons
 - **next-themes** for theme support
 - **class-variance-authority** for variant styling

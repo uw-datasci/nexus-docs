@@ -39,10 +39,9 @@ pnpm dev:web
 
 # Terminal 2: Admin app
 pnpm dev:admin
-
-# Terminal 3: Documentation
-pnpm dev:docs
 ```
+
+> Running the docs site (`nexus-docs`) locally alongside this repo? It's a separate repo with its own `pnpm dev`, and it also defaults to port 3000 - change one of the ports if you run both at once.
 
 **Or use tmux/screen for session management.**
 
@@ -77,10 +76,13 @@ pnpm dev
 
 ```tsx
 // app/api/route.ts
-export async function GET() {
+import { RaftResponse } from "@uw-datasci/raft";
+import { withRaftRoute } from "@uwdsc/core/http";
+
+export const GET = withRaftRoute(async () => {
   console.log("API called");  // Shows in terminal
-  return NextResponse.json({ data: "test" });
-}
+  return RaftResponse.ok({ data: "test" });
+});
 ```
 
 **Client-side logs** (appear in browser):
@@ -156,11 +158,8 @@ pnpm format "apps/web/**/*.tsx"
 ### Type Checking
 
 ```bash
-# Check types
-pnpm tsc --noEmit
-
-# Watch mode
-pnpm tsc --noEmit --watch
+# Check types across the workspace
+pnpm check-types
 ```
 
 ## Performance Optimization
@@ -229,44 +228,17 @@ pnpm migrate:check
 
 Use the Postgres connection from `@uwdsc/db` (see [Database Setup](/guides/database)). Run seed scripts from the app or a script that loads env and uses the db package.
 
-## Testing
+## Verifying Changes
 
-### Unit Tests
+There is **no test framework** configured in `uwdsc-website-v3`. Verify changes with:
 
-```typescript
-// Component test
-import { render, screen } from "@testing-library/react";
-import { Button } from "@uwdsc/ui";
-
-describe("Button", () => {
-  it("renders children", () => {
-    render(<Button>Click me</Button>);
-    expect(screen.getByText("Click me")).toBeInTheDocument();
-  });
-
-  it("calls onClick handler", () => {
-    const handleClick = jest.fn();
-    render(<Button onClick={handleClick}>Click</Button>);
-    screen.getByText("Click").click();
-    expect(handleClick).toHaveBeenCalledTimes(1);
-  });
-});
+```bash
+pnpm lint          # eslint --max-warnings 0 - warnings fail this
+pnpm check-types   # tsc --noEmit across the workspace
+pnpm dev:web       # or dev:admin - run the relevant app and exercise the change manually
 ```
 
-### Integration Tests
-
-```typescript
-// API test
-import { GET } from "@/app/api/health/route";
-
-describe("Health API", () => {
-  it("returns health status", async () => {
-    const response = await GET();
-    const data = await response.json();
-    expect(data.status).toBe("healthy");
-  });
-});
-```
+If you're adding a new package that should be tested, `@uw-datasci/raft` (a separate repo) uses Vitest as a reference pattern - see its `pnpm test` / `pnpm test:watch` scripts.
 
 ## Git Workflow
 
@@ -315,22 +287,19 @@ Add to `.bashrc` or `.zshrc`:
 alias dev="pnpm dev"
 alias devw="pnpm dev:web"
 alias deva="pnpm dev:admin"
-alias devd="pnpm dev:docs"
 alias build="pnpm build"
 alias lint="pnpm lint"
 ```
 
 ### Package Scripts
 
-Create convenience scripts in `package.json`:
+If you want a one-off cleanup script that isn't in the root `package.json` today, add one rather than hand-typing `rm -rf`:
 
 ```json
 {
   "scripts": {
-    "clean": "rm -rf .next node_modules",
-    "reset": "pnpm clean && pnpm install",
-    "type-check": "tsc --noEmit",
-    "test:watch": "jest --watch"
+    "clean": "rm -rf apps/*/.next node_modules",
+    "reset": "pnpm clean && pnpm install"
   }
 }
 ```
@@ -457,5 +426,5 @@ pnpm install
 
 - [Adding Components](/guides/adding-components) - Build UI components
 - [Creating API](/guides/creating-api) - Build backend features
-- [Database Setup](/guides/database) - Work with db-mate and pg
+- [Database Setup](/guides/database) - Work with db-migrate and postgres.js
 

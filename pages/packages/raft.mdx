@@ -1,0 +1,170 @@
+# Raft (Error Handling)
+
+`@uw-datasci/raft` - UWDSC's internal SDK for standardized API responses and automatic error quarantine in the Next.js 16 App Router apps (`apps/web`, `apps/admin`).
+
+## What it is
+
+Every UWDSC app used to re-implement the same response helpers and the same ad-hoc `try/catch` error logging. Raft standardizes both:
+
+- **`RaftResponse`** - consistent status codes and JSON body shapes for every route.
+- **`withRaft`** (wrapped in this repo as **`withRaftRoute`**) - wraps a route handler so unhandled exceptions are caught, quarantined to Postgres, and returned as a clean `500` instead of crashing the runtime or vanishing into a serverless log.
+- **`RaftClient`** - the singleton that performs the actual, environment-aware error reporting: console-only in development, awaited writes to Postgres in production (awaited so a serverless container can't be frozen mid-write, truncating the report).
+
+It's **server-only** (built on `server-only`) - never import it into a Client Component.
+
+**Package**: `@uw-datasci/raft`, private, published to **GitHub Packages** under the `@uw-datasci` scope. Installing it requires a GitHub personal access token - see [Authenticate to GitHub Packages](/getting-started#2-authenticate-to-github-packages) if `pnpm install` fails with a 401.
+
+## `RaftResponse`
+
+Static builders for `NextResponse` - use these instead of constructing `NextResponse` by hand, so every route returns a consistent body shape.
+
+| Method | Status | Body |
+| --- | --- | --- |
+| `RaftResponse.ok(data?, init?)` | 200 | `data` verbatim |
+| `RaftResponse.badRequest(message?, error?)` | 400 | `{ error }` or `{ error, message }` |
+| `RaftResponse.unauthorized(message?, error?)` | 401 | `{ error }` or `{ error, message }` |
+| `RaftResponse.forbidden(message?, error?)` | 403 | `{ error }` or `{ error, message }` |
+| `RaftResponse.notFound(error?)` | 404 | `{ error }` |
+| `RaftResponse.json(data, status?, init?)` | custom | `data` verbatim |
+| `RaftResponse.text(body, contentType, status?, init?)` | custom | raw string, with the given `Content-Type` |
+| `RaftResponse.serverError(message?, error?, context?)` | 500 | `{ error }` or `{ error, message }` |
+
+```ts
+import { RaftResponse } from "@uw-datasci/raft";
+
+return RaftResponse.ok({ profile, isComplete });
+return RaftResponse.badRequest("Email is required");
+return RaftResponse.notFound("Profile not found");
+return RaftResponse.forbidden("Execs only");
+return RaftResponse.text(ics, "text/calendar"); // e.g. a calendar feed
+```
+
+> **`serverError` is `async`** - it awaits the Postgres write before resolving. Always `await` it or `return` it directly from an `async` handler; every other helper is synchronous. In practice you rarely call it directly - `withRaftRoute` calls it for you on an uncaught throw.
+
+## `withRaftRoute`
+
+`@uwdsc/core/http` exports `withRaftRoute` - `withRaft` from the SDK, plus this repo's `ApiError` translation (`ApiError` from `@uwdsc/common/types`, **not** the identically-named class `@uw-datasci/raft` also exports - importing raft's would make every `instanceof` check silently fail).
+
+- Anything thrown that **isn't** an `ApiError` is rethrown into `withRaft`, which quarantines it to `raft.error_quarantine` and returns a generic `RaftResponse.serverError()`-shaped `500`.
+- An `ApiError` with a **4xx** status is mapped to that status and **not** quarantined - these are caller-caused and expected.
+- An `ApiError` with a **5xx** status is mapped **and** quarantined - these are real faults and shouldn't stay invisible just because they arrive wrapped in an `ApiError`.
+- Next's control-flow throws (`redirect()`, `notFound()`) aren't `ApiError`, so they pass through to `withRaft`, which re-throws them by digest rather than quarantining them.
+
+**There is no manual `try/catch` in route handlers** - wrap once with `withRaftRoute` (or a guard that already includes it) and let it handle the rest. Note the two imports come from different packages - `RaftResponse` from `@uw-datasci/raft`, `withRaftRoute` from this repo's own `@uwdsc/core/http`:
+
+```ts
+// app/api/users/[id]/route.ts
+import { RaftResponse } from "@uw-datasci/raft";
+import { withRaftRoute } from "@uwdsc/core/http";
+import { db } from "@/lib/db";
+
+export const GET = withRaftRoute(async (_req, { params }) => {
+  const { id } = await params; // Next 16: params is a Promise
+  const user = await db.users.find(id); // throws -> auto 500 + quarantine
+  if (!user) return RaftResponse.notFound("User not found");
+  return RaftResponse.ok(user);
+});
+```
+
+## Web vs admin: which wrapper to use
+
+**`apps/web`** has no route guard of its own - wrap route exports directly:
+
+```ts
+export const GET = withRaftRoute(async (request, context) => {
+  /* ... */
+});
+```
+
+**`apps/admin`** never calls `withRaftRoute` directly - use the guards in `apps/admin/guards`, which already fold it in along with role checks:
+
+- **`withAuth`** - requires an authenticated `admin`/`exec` user (`ADMIN_ROLES` from `@uwdsc/common/constants`); exec users additionally need a paid membership unless the term's onboarding grace window is open. Pass `{ allowAlum: true }` for the handful of self-service routes an `alum` may also reach.
+- **`withAdmin`** - requires the `admin` role specifically (`pres` also passes, as a superset). Pass `{ scope: true }` when the handler needs VP/subteam scoping - it then receives a resolved `QuestionScope` as an extra argument.
+- **`withPresAccess`** - requires the `pres` role.
+
+```ts
+// apps/admin/app/api/members/route.ts
+import { RaftResponse } from "@uw-datasci/raft";
+import { withAdmin } from "@/guards/withAdmin";
+import { profileService } from "@uwdsc/admin";
+
+export const GET = withAdmin(async (_request, _context, user) => {
+  const members = await profileService.listMembers();
+  return RaftResponse.ok(members);
+});
+```
+
+All three guards delegate to `withAuth`, which wraps with `withRaftRoute` - so a handler behind any of them needs no `try/catch` of its own.
+
+## The route-params gotcha
+
+Route segment params must be an inline object literal or a `type` alias - **never** a named `interface`:
+
+```ts
+type Params = { id: string };      // works
+interface Params { id: string }    // TS2344 / TS2430
+```
+
+Only anonymous object types receive TypeScript's implicit index signature, which is what satisfies the `Record<string, string | string[]>` constraint `withRaft` requires for its context type. This trips people up because it looks like it should just work with an `interface`.
+
+## Configuration
+
+`RAFT_APP_NAME` (`"web"` or `"admin"`) and `RAFT_DATABASE_URL` are **not** stored in Infisical - they're set once per process in each app's `instrumentation.ts`:
+
+```ts
+// apps/web/instrumentation.ts (apps/admin's is identical except RAFT_APP_NAME)
+export function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return; // Raft opens a pg pool - Node only
+
+  process.env.RAFT_APP_NAME ??= "web";
+  process.env.RAFT_DATABASE_URL ??= process.env.DATABASE_URL;
+
+  if (process.env.NODE_ENV === "production" && !process.env.RAFT_DATABASE_URL) {
+    console.warn("[raft] neither RAFT_DATABASE_URL nor DATABASE_URL is set");
+  }
+}
+```
+
+`RAFT_DATABASE_URL` is derived from the already-present `DATABASE_URL` (`??=`, so an explicit override still wins) rather than duplicated as a separate secret to rotate. Raft reads its config lazily - every `process.env` access happens inside `RaftClient.getInstance()`, reached only on the first error report - so `instrumentation.ts` is early enough to set these without duplicating the contract in the secret store.
+
+## Where errors land: Optics
+
+Quarantined rows go to the `raft.error_quarantine` Postgres table. The **read side** of that table is admin's **Optics** dashboard:
+
+- `apps/admin/app/api/raft/{overview,errors}/route.ts` - API routes
+- `apps/admin/components/optics` - the dashboard UI
+- `packages/server/admin/src/modules/raft/{raft.service,raft.repository}.ts` - the query layer
+
+This is a separate concern from `@uw-datasci/raft` itself and from `@uwdsc/core/http`'s `withRaftRoute` (which writes to the table) - Optics only reads and displays what's already there.
+
+## Migrations
+
+The `raft` schema and its migrations belong to the **`nexus-raft` repo**, not this one. If you're setting up a fresh database, apply it once:
+
+```bash
+psql "$RAFT_DATABASE_URL" -f node_modules/@uw-datasci/raft/migrations/0001_init_raft_schema.sql
+```
+
+Never add a migration for the `raft` schema under `packages/server/db/src/migrations/` in this repo.
+
+## Best practices
+
+### ✅ Do
+
+- Wrap every `apps/web` route with `withRaftRoute`; use `withAuth`/`withAdmin`/`withPresAccess` in `apps/admin`
+- Build every response with `RaftResponse.*`
+- Throw `ApiError` (`@uwdsc/common/types`) for expected failures and let the wrapper translate the status code
+- Await `RaftResponse.serverError(...)` if you ever call it directly
+
+### ❌ Don't
+
+- Wrap a `withRaftRoute` (or guard-wrapped) handler in another `try/catch` - it's redundant
+- Construct `NextResponse` by hand in a route
+- Import `ApiError` from `@uw-datasci/raft` in this repo's code - use this repo's own `ApiError` from `@uwdsc/common/types`, or `withRaftRoute`'s translation won't fire
+- Add a `raft` schema migration to `packages/server/db` - that belongs in `nexus-raft`
+
+## Next steps
+
+- [Creating API Endpoints](/guides/creating-api) - Step-by-step guide using `withRaftRoute` and `RaftResponse`
+- [API Architecture](/architecture/api-flow) - How Raft fits into the full request flow
+- [Server Package](/packages/server) - `@uwdsc/core/http` and the rest of the server packages

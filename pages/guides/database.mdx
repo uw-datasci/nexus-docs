@@ -1,6 +1,6 @@
 # Database Setup
 
-Learn how to work with db-mate, pg, and Supabase in this project.
+Learn how to work with db-migrate, postgres.js, and Supabase in this project.
 
 ## Overview
 
@@ -102,13 +102,13 @@ pnpm migrate:check   # Check migration status
 
 ## Using postgres.js via @uwdsc/db
 
-Repositories extend `BaseRepository` from `@uwdsc/db/baseRepository` and use the protected `this.sql` tagged template (postgres.js). Do not use a global pool in app code; use the repository layer.
+Repositories extend `BaseRepository` from `@uwdsc/db/base.repository` and use the protected `this.sql` tagged template (postgres.js). Do not use a global pool in app code; use the repository layer.
 
 ### Repository pattern
 
 ```typescript
 // packages/server/core/src/repositories/UserRepository.ts
-import { BaseRepository } from "@uwdsc/db/baseRepository";
+import { BaseRepository } from "@uwdsc/db/base.repository";
 
 export class UserRepository extends BaseRepository {
   async findById(id: string) {
@@ -261,7 +261,7 @@ Create a seed script that uses the database connection from `@uwdsc/db` (or run 
 ### Repository Pattern
 
 ```typescript
-import { BaseRepository } from "@uwdsc/db/baseRepository";
+import { BaseRepository } from "@uwdsc/db/base.repository";
 
 export class UserRepository extends BaseRepository {
   async findByEmail(email: string) {
@@ -355,8 +355,8 @@ SELECT * FROM users WHERE email = 'test@example.com';
 
 ## Resources
 
-- [pg Documentation](https://node-postgres.com/)
-- [db-mate Documentation](https://github.com/amacneil/dbmate)
+- [postgres.js Documentation](https://github.com/porsager/postgres)
+- [db-migrate Documentation](https://github.com/db-migrate/node-db-migrate)
 - [Supabase Documentation](https://supabase.com/docs)
 - [PostgreSQL Documentation](https://www.postgresql.org/docs/)
 

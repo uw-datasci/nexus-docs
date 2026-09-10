@@ -12,32 +12,41 @@ The `@uwdsc/ui` package contains all shared UI components (atoms) used across th
 
 ## Available Components
 
-### Layout Components
+The full list, one file per component in `packages/ui/src/components/`:
+
+### Layout & Structure
 
 - **Card** - Container with border and padding
 - **Separator** - Visual divider
-- **Aspect Ratio** - Maintain aspect ratios
+- **Scroll Area** - Custom-styled scrollable region
+- **Sidebar** - App sidebar layout primitive
+- **Collapsible** - Expand/collapse content
 
 ### Navigation
 
 - **Navigation Menu** - Accessible navigation
-- **Breadcrumb** - Hierarchical navigation
 - **Tabs** - Tabbed interfaces
 
 ### Form Components
 
 - **Button** - Interactive buttons with variants
 - **Input** - Text input fields
+- **Textarea** - Multi-line text input
 - **Checkbox** - Boolean input
+- **Radio Group** - Single-choice input
+- **Switch** - Toggle input
 - **Select** - Dropdown selection
-- **Form** - Form wrapper with validation
+- **Form** - Form wrapper with validation (React Hook Form)
+- **Datetime Picker** / **Calendar** / **Event Calendar** - Date and event selection
+- **Label** - Form field labels
 
 ### Feedback
 
-- **Alert** - Important messages
-- **Toast** - Temporary notifications
 - **Badge** - Status indicators
-- **Progress** - Progress indicators
+- **Sonner** - Toast notifications (this project uses `sonner`, not a separate Toast component)
+- **Skeleton** - Loading placeholders
+- **Spinner** - Loading indicator
+- **Tooltip** - Contextual hints
 
 ### Overlays
 
@@ -51,6 +60,14 @@ The `@uwdsc/ui` package contains all shared UI components (atoms) used across th
 - **Avatar** - User avatars
 - **Table** - Data tables
 - **Accordion** - Collapsible content
+- **Chart** - Recharts-based charts
+- **Carousel** - Content carousel
+- **Counting Numbers** - Animated number counter
+- **Toggle** - Toggle button
+
+### Marketing / Visual
+
+- **Galaxy Hero**, **Glass Surface**, **Section Title** - Site-specific visual/marketing components
 
 ## Installation
 
@@ -73,11 +90,10 @@ pnpm ui:add dropdown-menu popover sheet
 ```
 
 This script:
-1. Changes to `packages/ui` directory
-2. Runs `shadcn@canary add <component-name>`
-3. Downloads component to `src/components/`
-4. Installs dependencies
-5. Makes it available via `@uwdsc/ui`
+1. Runs `pnpm dlx shadcn@canary add <component-name>` from `packages/ui`
+2. Downloads the component to `src/components/` and installs its dependencies
+3. Diffs the component directory before/after and appends `export * from "./components/<name>"` to `src/index.ts` for any newly created file(s)
+4. If it can't detect a new file, it prints the export line to add manually - check `src/index.ts` after running if the command output looks unusual
 
 ### Manual Installation
 
@@ -307,8 +323,7 @@ packages/ui/
 │   │   ├── input.tsx
 │   │   └── ...
 │   ├── hooks/            # React hooks
-│   │   ├── use-toast.ts
-│   │   └── use-mobile.ts
+│   │   └── use-mobile.ts  # useIsMobile
 │   ├── lib/              # Utilities
 │   │   └── utils.ts
 │   ├── styles/           # Global styles
@@ -329,14 +344,18 @@ packages/ui/
   "rsc": true,
   "tsx": true,
   "tailwind": {
-    "config": "tailwind.config.ts",
+    "config": "",
     "css": "src/styles/globals.css",
-    "baseColor": "slate",
+    "baseColor": "neutral",
     "cssVariables": true
   },
+  "iconLibrary": "lucide",
   "aliases": {
-    "components": "@/components",
-    "utils": "@/lib/utils"
+    "components": "@uwdsc/ui/components",
+    "utils": "@uwdsc/ui/lib/utils",
+    "hooks": "@uwdsc/ui/hooks",
+    "lib": "@uwdsc/ui/lib",
+    "ui": "@uwdsc/ui/components"
   }
 }
 ```
@@ -346,16 +365,17 @@ packages/ui/
 ### Core Dependencies
 
 - `react` & `react-dom` - React framework
-- `@radix-ui/*` - Headless UI primitives
+- `@radix-ui/react-dialog`, `@radix-ui/react-slot`, `radix-ui` - Headless UI primitives
 - `class-variance-authority` - Variant styling
-- `clsx` - Class name utilities
-- `tailwind-merge` - Tailwind class merging
+- `clsx`, `tailwind-merge`, `tw-animate-css` - Class name utilities
 
-### Optional Dependencies
+### Additional Dependencies
 
-- `framer-motion` - Animations
+- `motion` - Animations (note: this package uses `motion`, not `framer-motion` - `apps/web` separately depends on `framer-motion` for its own use)
 - `lucide-react` - Icons
 - `next-themes` - Theme support
+- `recharts` - Charts (used by the `chart` component)
+- `react-hook-form`, `date-fns`, `react-day-picker`, `embla-carousel-react`, `sonner`, `@splinetool/react-spline` - Component-specific dependencies
 
 ## Utilities
 
@@ -376,19 +396,39 @@ import { cn } from "@uwdsc/ui/lib/utils";
 ### Custom Hooks
 
 ```tsx
-import { useToast } from "@uwdsc/ui";
+import { useIsMobile } from "@uwdsc/ui";
 
 export function Component() {
-  const { toast } = useToast();
+  const isMobile = useIsMobile();
+  return <div>{isMobile ? "Mobile layout" : "Desktop layout"}</div>;
+}
+```
 
-  const showToast = () => {
-    toast({
-      title: "Success",
-      description: "Action completed successfully",
-    });
-  };
+### Toasts (sonner)
 
-  return <Button onClick={showToast}>Show Toast</Button>;
+Toasts use [sonner](https://sonner.emilkowal.ski/) directly, not a custom hook. Render `<Toaster />` (re-exported from `@uwdsc/ui`) once near the app root, then call `toast()` from `sonner` anywhere:
+
+```tsx
+// app/layout.tsx
+import { Toaster } from "@uwdsc/ui";
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html>
+      <body>
+        {children}
+        <Toaster />
+      </body>
+    </html>
+  );
+}
+```
+
+```tsx
+import { toast } from "sonner";
+
+export function Component() {
+  return <Button onClick={() => toast.success("Action completed successfully")}>Show Toast</Button>;
 }
 ```
 

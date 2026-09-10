@@ -9,14 +9,13 @@ uwdsc-website-v3/
 ├── .github/                # GitHub Actions
 ├── apps/                   # Frontend applications
 │   ├── web/                # Main website and member applications
-│   ├── admin/              # Admin dashboard and CXC application/review
-│   └── docs/               # Documentation site
+│   └── admin/              # Admin dashboard and CXC application/review
 ├── packages/               # Shared packages
 │   ├── ui/                 # Design system (@uwdsc/ui)
 │   ├── common/             # Shared types and utils (@uwdsc/common)
 │   ├── server/             # Backend
 │   │   ├── db/            # @uwdsc/db - Postgres, Supabase, BaseRepository, migrations
-│   │   ├── core/          # @uwdsc/core - Shared services
+│   │   ├── core/          # @uwdsc/core - Shared services + Raft HTTP wrapper
 │   │   └── admin/         # @uwdsc/admin - Admin-only services
 │   ├── eslint-config/      # ESLint configuration
 │   └── typescript-config/  # TypeScript configuration
@@ -25,6 +24,8 @@ uwdsc-website-v3/
 ├── pnpm-workspace.yaml     # Workspace configuration
 └── turbo.json              # Turborepo configuration
 ```
+
+> The documentation site (this site) lives in a **separate repo** (`nexus-docs`), not as an app in this monorepo.
 
 ## Apps
 
@@ -68,6 +69,8 @@ apps/web/
 ├── hooks/               # React hooks
 ├── lib/                 # Utilities, API client, services
 ├── providers/           # React providers
+├── proxy.ts             # Next.js 16 request interception (formerly middleware.ts)
+├── instrumentation.ts   # Server boot hook - sets RAFT_APP_NAME / RAFT_DATABASE_URL
 └── public/              # Static assets
 ```
 
@@ -97,32 +100,14 @@ apps/admin/
 │   └── unauthorized/    # Unauthorized page
 ├── components/          # React components
 ├── contexts/           # React contexts
+├── guards/              # withAuth, withAdmin, withPresAccess route guards
 ├── hooks/               # React hooks
 ├── lib/                 # Utilities, API client, services
-└── providers/           # React providers
+├── providers/           # React providers
+└── proxy.ts             # Next.js 16 request interception (formerly middleware.ts)
 ```
 
-### `apps/docs` - Documentation
-
-This documentation site.
-
-**Purpose**: Developer documentation and guides
-
-**Tech Stack**: Next.js 15 (Nextra-compatible), Nextra, MDX
-
-**Structure**:
-
-```
-apps/docs/
-├── pages/               # Nextra/Pages Router (MDX docs)
-│   ├── architecture/
-│   ├── changelog/
-│   ├── guides/
-│   ├── packages/
-│   ├── _meta.js         # Section navigation
-│   └── ...
-└── public/              # Static assets
-```
+> The documentation site is not part of this repo - it lives in the separate `nexus-docs` repo (Next.js 15, Nextra, MDX), deployed to docs.uwdatascience.ca.
 
 ## Packages
 
@@ -157,7 +142,7 @@ packages/ui/
 
 Database connection, Supabase clients, and base repository.
 
-**Exports**: `@uwdsc/db`, `@uwdsc/db/connection`, `@uwdsc/db/supabase`, `@uwdsc/db/baseRepository`
+**Exports**: `@uwdsc/db` (app-level tsconfig path alias to `config/supabase.ts` - see below), `@uwdsc/db/connection`, `@uwdsc/db/supabase`, `@uwdsc/db/supabase/profile`, `@uwdsc/db/base.repository`
 
 **Contents**:
 
@@ -171,35 +156,40 @@ Database connection, Supabase clients, and base repository.
 ```
 packages/server/db/
 └── src/
-    ├── config/          # connection.ts, supabase.ts, baseRepository.ts
+    ├── config/          # connection.ts, supabase.ts, base.repository.ts
     └── migrations/      # db-migrate SQL and runner
 ```
 
 **Run migrations from root**: `pnpm migrate`, `pnpm migrate:down`, `pnpm migrate:create`, etc.
 
+> `@uwdsc/db`'s `package.json` doesn't declare a `"."` export - the bare `@uwdsc/db` specifier used in app code (e.g. `import { createSupabaseServerClient } from "@uwdsc/db"`) is resolved by a `paths` alias in each app's own `tsconfig.json`, not by the package's `exports` map.
+
 ### `packages/server/core` - Shared Backend (`@uwdsc/core`)
 
 Shared services and repositories used by web and admin apps.
 
-**Exports**: `@uwdsc/core` - service classes and singletons: `profileService`, `applicationService`, `teamService`; `AuthService`, `ResumeService` (create per-request in app `lib/services.ts` via `createAuthService()` / `createResumeService()`)
+**Exports**: `@uwdsc/core` - service classes and singletons: `profileService`, `applicationService`, `teamService`; `AuthService`, `ResumeService` (create per-request in app `lib/services.ts` via `createAuthService()` / `createResumeService()`). `@uwdsc/core/http` - `withRaftRoute`, the [Raft](/packages/raft) route wrapper used by every `apps/web` API route.
 
 **Contents**:
 
-- AuthService, ProfileService, ApplicationService, FileService, ResumeService, TeamService
-- Repositories (ProfileRepository, ApplicationRepository, AuthRepository, etc.) extending `BaseRepository` from `@uwdsc/db`
-- Types and utilities
+- **Modules** (`src/modules/<domain>/`), each with a `<domain>.service.ts` and `<domain>.repository.ts`: `auth`, `profile`, `application`, `team`, `events`, `membership`, `file`, `contact`
+- `src/http/withRaftRoute.ts` - wraps `withRaft` from `@uw-datasci/raft` with this repo's `ApiError` translation
+- Repositories (ProfileRepository, ApplicationRepository, AuthRepository, etc.) extending `BaseRepository` from `@uwdsc/db/base.repository`
+- `src/types/`, `src/utils/` - shared types and utilities
 
 **Structure**:
 
 ```
 packages/server/core/
 └── src/
-    ├── repositories/    # ProfileRepository, ApplicationRepository, etc.
-    ├── services/        # Auth, Profile, Application, File, Resume, Team
+    ├── modules/         # auth/, profile/, application/, team/, events/, membership/, file/, contact/
+    │                    #   each: <domain>.service.ts + <domain>.repository.ts
+    ├── http/            # withRaftRoute.ts - Raft route wrapper (@uwdsc/core/http)
+    ├── types/           # Shared type definitions
     └── utils/           # Shared utilities
 ```
 
-**Dependencies**: `@uwdsc/db`, `@uwdsc/common`
+**Dependencies**: `@uwdsc/db`, `@uwdsc/common`, `@uw-datasci/raft`
 
 ### `packages/server/admin` - Admin Backend (`@uwdsc/admin`)
 
@@ -216,18 +206,22 @@ Admin-only services (e.g. profile/member management for admin dashboard).
 ```
 packages/server/admin/
 └── src/
-    ├── repositories/    # Admin-specific data access
-    └── services/       # Admin profile/member services
+    ├── modules/         # application/, hiring/, membership/, events/, email/, integration/, raft/
+    │                    #   each: <domain>.service.ts + <domain>.repository.ts
+    ├── types/           # Admin-specific type definitions
+    └── utils/           # Admin-specific utilities
 ```
+
+> The `raft` module here (`src/modules/raft/`) is the **read side** of the `raft.error_quarantine` table - it powers admin's Optics dashboard. It's separate from `@uw-datasci/raft` itself and from `@uwdsc/core/http`, which writes to that table.
 
 ### `packages/eslint-config`
 
-Shared ESLint configuration.
+Shared ESLint configuration (flat config, ESM).
 
 **Exports**:
 
 - `@uwdsc/eslint-config/base`
-- `@uwdsc/eslint-config/next`
+- `@uwdsc/eslint-config/next-js`
 - `@uwdsc/eslint-config/react-internal`
 
 **Purpose**: Consistent code style across all packages
@@ -294,12 +288,17 @@ Packages reference each other using workspace protocol:
 
 ### Shared Dependencies
 
-Common dependencies are installed once at the root:
+Unlike some Turborepo setups, React, Next.js, Tailwind, and similar libraries are **not** hoisted to a single root install here - each app and package declares its own version in its `package.json`. The root `package.json` itself only holds dev tooling (`turbo`, `eslint`, `prettier`, `typescript`) and `dotenv`.
 
-- React, Next.js
-- TypeScript
-- Tailwind CSS
-- ESLint, Prettier
+Version consistency across packages is instead enforced centrally via `pnpm-workspace.yaml`'s `overrides`:
+
+```yaml
+overrides:
+  "@types/react": ^19.2.7
+  "@types/react-dom": ^19.2.3
+  mermaid: ^11.14.1
+  postcss: ^8.5.10
+```
 
 ### App-Specific Dependencies
 
@@ -332,6 +331,10 @@ import { Button, Card } from "@uwdsc/ui";
 import { profileService, applicationService } from "@uwdsc/core";
 import { createAuthService, createResumeService } from "@/lib/services"; // uses @uwdsc/db + @uwdsc/core
 
+// Raft route wrapper (web routes wrap directly; admin uses guards that fold this in)
+import { withRaftRoute } from "@uwdsc/core/http";
+import { RaftResponse } from "@uw-datasci/raft";
+
 // Admin-only (admin app API routes)
 import { profileService } from "@uwdsc/admin";
 
@@ -343,7 +346,7 @@ import { createSupabaseServerClient } from "@uwdsc/db";
 
 ```tsx
 // In @uwdsc/core or @uwdsc/admin
-import { BaseRepository } from "@uwdsc/db/baseRepository";
+import { BaseRepository } from "@uwdsc/db/base.repository";
 import { sql } from "@uwdsc/db/connection";
 ```
 

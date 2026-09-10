@@ -18,15 +18,16 @@ The `packages/server/` directory contains three sub-packages. There is **no Pris
 packages/server/
 ├── db/              # @uwdsc/db
 │   └── src/
-│       ├── config/       # connection, supabase, baseRepository
+│       ├── config/       # connection, supabase, base.repository
 │       └── migrations/   # db-migrate SQL files
 ├── core/            # @uwdsc/core
 │   └── src/
-│       ├── services/     # Auth, Profile, Application, File, Resume, Team
-│       ├── repositories/ # Data access (extend BaseRepository)
+│       ├── modules/      # auth/, profile/, application/, team/, events/, membership/, file/, contact/
+│       │                 #   each: <domain>.service.ts + <domain>.repository.ts (extends BaseRepository)
+│       ├── http/         # withRaftRoute.ts - Raft route wrapper (@uwdsc/core/http)
 │       └── ...
 └── admin/           # @uwdsc/admin
-    └── src/              # Admin-specific services (e.g. profileService for members)
+    └── src/              # modules/ - admin-specific services (e.g. profileService for members)
 ```
 
 ## @uwdsc/db
@@ -37,7 +38,10 @@ packages/server/
 
 - `@uwdsc/db/connection` - Postgres `sql` (postgres.js)
 - `@uwdsc/db/supabase` - `createSupabaseBrowserClient`, `createSupabaseServerClient`, `createSupabaseMiddlewareClient`
-- `@uwdsc/db/baseRepository` - `BaseRepository` (abstract class with protected `this.sql`)
+- `@uwdsc/db/supabase/profile` - Supabase profile helpers
+- `@uwdsc/db/base.repository` - `BaseRepository` (abstract class with protected `this.sql`)
+
+The bare `@uwdsc/db` specifier used in app code (`import { createSupabaseServerClient } from "@uwdsc/db"`) isn't one of these package exports - it's a `paths` alias each app's `tsconfig.json` points at `config/supabase.ts`.
 
 **Tech**: postgres.js (Supabase Transaction Pooler), Supabase JS/SSR, db-migrate. Run migrations from root: `pnpm migrate`, `pnpm migrate:down`, `pnpm migrate:create <name>`.
 
@@ -45,53 +49,63 @@ packages/server/
 
 **Purpose**: Shared services and repositories used by **web** and **admin** apps.
 
-**Exports**: Service classes and **singleton instances**: `profileService`, `applicationService`, `teamService`. `AuthService` and `ResumeService` require a Supabase client and are created per-request in each app’s `lib/services.ts` via `createAuthService()` / `createResumeService()`.
+**Exports**:
+
+- `@uwdsc/core` - service classes and **singleton instances**: `profileService`, `applicationService`, `teamService`. `AuthService` and `ResumeService` require a Supabase client and are created per-request in each app's `lib/services.ts` via `createAuthService()` / `createResumeService()`.
+- `@uwdsc/core/http` - `withRaftRoute`, the [Raft](/packages/raft) route wrapper used to build every `apps/web` API route.
 
 ```typescript
 import { profileService, applicationService, teamService } from "@uwdsc/core";
 import { AuthService, ResumeService } from "@uwdsc/core";
+import { withRaftRoute } from "@uwdsc/core/http";
 ```
 
 **Contents**:
 
-- **Services**: AuthService, ProfileService, ApplicationService, FileService, ResumeService, TeamService
-- **Repositories**: Extend `BaseRepository` from `@uwdsc/db/baseRepository`; use `this.sql` for queries
-- **Dependencies**: `@uwdsc/db`, `@uwdsc/common`
+- **Modules** (`src/modules/<domain>/`): auth, profile, application, team, events, membership, file, contact - each with a `<domain>.service.ts` and `<domain>.repository.ts`
+- **Repositories**: Extend `BaseRepository` from `@uwdsc/db/base.repository`; use `this.sql` for queries
+- **Dependencies**: `@uwdsc/db`, `@uwdsc/common`, `@uw-datasci/raft`
 
 ## @uwdsc/admin
 
 **Purpose**: Admin-only services (e.g. profile/member listing and updates for the admin dashboard).
 
-**Exports**: Admin-specific `profileService` (and related) for member management.
+**Exports**: Admin-specific `profileService` (and related) for member management, organized the same way as `@uwdsc/core` (`src/modules/<domain>/`: application, hiring, membership, events, email, integration, raft).
 
 ```typescript
 import { profileService } from "@uwdsc/admin";
 ```
 
-**Used by**: `apps/admin` API routes only. **Dependencies**: `@uwdsc/core`, `@uwdsc/db`, `@uwdsc/common`.
+**Used by**: `apps/admin` API routes only, via the guards in `apps/admin/guards`. **Dependencies**: `@uwdsc/core`, `@uwdsc/db`, `@uwdsc/common`.
 
 ## Usage
 
 ### In API Routes (web or admin)
 
+Wrap every route with [Raft](/packages/raft) - `withRaftRoute` directly in `apps/web`, or a guard (`withAuth`/`withAdmin`) that includes it in `apps/admin`:
+
 ```typescript
 // apps/web/app/api/profile/route.ts
+import { RaftResponse } from "@uw-datasci/raft";
+import { withRaftRoute } from "@uwdsc/core/http";
 import { profileService } from "@uwdsc/core";
 
-export async function GET() {
+export const GET = withRaftRoute(async () => {
   const profile = await profileService.getProfileByUserId(user.id);
-  return NextResponse.json(profile);
-}
+  return RaftResponse.ok(profile);
+});
 ```
 
 ```typescript
 // apps/admin/app/api/members/route.ts
+import { RaftResponse } from "@uw-datasci/raft";
+import { withAdmin } from "@/guards/withAdmin";
 import { profileService } from "@uwdsc/admin";
 
-export async function GET() {
+export const GET = withAdmin(async () => {
   const members = await profileService.listMembers();
-  return NextResponse.json(members);
-}
+  return RaftResponse.ok(members);
+});
 ```
 
 ### Auth and resume (per-request)
@@ -119,7 +133,7 @@ export async function createResumeService() {
 Repositories extend `BaseRepository` and use `this.sql` (postgres.js):
 
 ```typescript
-import { BaseRepository } from "@uwdsc/db/baseRepository";
+import { BaseRepository } from "@uwdsc/db/base.repository";
 
 export class ProfileRepository extends BaseRepository {
   async findByUserId(userId: string) {
@@ -145,8 +159,8 @@ Migrations live in `packages/server/db`. From repo root:
 - Use services from `@uwdsc/core` or `@uwdsc/admin` in API routes
 - Use singletons (`profileService`, `applicationService`, `teamService`) where the service is stateless
 - Create AuthService/ResumeService per-request via `lib/services.ts`
-- Extend `BaseRepository` from `@uwdsc/db/baseRepository` for new repositories
-- Use `ApiResponse` from `@uwdsc/common/utils` in API routes when applicable
+- Extend `BaseRepository` from `@uwdsc/db/base.repository` for new repositories
+- Wrap routes with `withRaftRoute` from `@uwdsc/core/http` (or an admin guard) and use `RaftResponse` from `@uw-datasci/raft`
 
 ### Don’t
 
@@ -157,6 +171,7 @@ Migrations live in `packages/server/db`. From repo root:
 
 ## Next steps
 
+- [Raft](/packages/raft) - `RaftResponse` / `withRaftRoute` reference
 - [API Architecture](/architecture/api-flow) - Request flow and layers
 - [Creating API Endpoints](/guides/creating-api) - Step-by-step API guide
 - [Database Setup](/guides/database) - Migrations and postgres.js usage

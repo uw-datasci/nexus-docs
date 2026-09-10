@@ -5,7 +5,7 @@ Our monorepo is built on modern web technologies with a focus on code reuse, typ
 ## Tech Stack
 
 ### Frontend
-- **Framework**: Next.js 16 (App Router) for web and admin; docs uses Next.js 15
+- **Framework**: Next.js 16 (App Router) for web and admin (this docs site is a separate repo, on Next.js 15)
 - **UI Library**: React 19
 - **Language**: TypeScript 5.x
 - **Styling**: Tailwind CSS
@@ -15,11 +15,12 @@ Our monorepo is built on modern web technologies with a focus on code reuse, typ
 
 ### Backend
 - **Database**: PostgreSQL (via Supabase)
-- **Database Client**: postgres.js (via `@uwdsc/db`); repositories extend `BaseRepository` from `@uwdsc/db/baseRepository`
+- **Database Client**: postgres.js (via `@uwdsc/db`); repositories extend `BaseRepository` from `@uwdsc/db/base.repository`
 - **Migrations**: db-migrate (migrations in `packages/server/db`); run from root with `pnpm migrate`
 - **Auth**: Supabase Auth (clients from `@uwdsc/db`; `AuthService` from `@uwdsc/core`)
 - **Storage**: Supabase Storage
 - **API**: Next.js API Routes
+- **Error handling**: [`@uw-datasci/raft`](/packages/raft) - `RaftResponse` + `withRaftRoute` wrap every route; unhandled errors are quarantined to Postgres instead of vanishing into serverless logs
 
 ### Monorepo Tooling
 - **Package Manager**: pnpm (with workspaces)
@@ -80,9 +81,10 @@ Frontend applications:
 ```
 apps/
 ├── web/          # Main UWDSC website and member applications
-├── admin/       # Admin dashboard and CXC application/review system
-└── docs/        # This documentation site
+└── admin/       # Admin dashboard and CXC application/review system
 ```
+
+> This documentation site lives in a separate repo (`nexus-docs`), not under `apps/` here.
 
 ### Shared Packages (`packages/`)
 

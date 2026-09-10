@@ -38,7 +38,49 @@ git clone https://github.com/uw-datasci/uwdsc-website-v3.git
 cd uwdsc-website-v3
 ```
 
-### 2. Install Dependencies
+### 2. Authenticate to GitHub Packages
+
+`apps/web` and `apps/admin` depend on [`@uw-datasci/raft`](/packages/raft), UWDSC's private SDK for standardized API responses and error quarantine. It's published to **GitHub Packages** (`npm.pkg.github.com`) under the `@uw-datasci` scope, not to the public npm registry, so `pnpm install` needs a GitHub token before it can resolve that dependency. This is configured in the repo's committed `.npmrc`:
+
+```ini
+@uw-datasci:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+```
+
+> **Token type matters**: GitHub Packages' npm registry only supports a **classic** personal access token — [fine-grained tokens are not supported](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry) for this. Make sure you create the classic kind below.
+
+**Create the token:**
+
+1. Go to [github.com/settings/tokens](https://github.com/settings/tokens) → **Generate new token** → **Generate new token (classic)**.
+2. Give it a name (e.g. `uwdsc-packages`) and an expiration.
+3. Under **Select scopes**, check only **`read:packages`**.
+4. Click **Generate token** and copy it immediately — GitHub won't show it again.
+
+Your GitHub account also needs to be a member of the **uw-datasci** org, or the registry will 401/404 on the package even with a valid token.
+
+**Export it as `NODE_AUTH_TOKEN`** so pnpm can find it. Persist this in your shell profile so it survives new terminal sessions:
+
+```bash
+# zsh (default on macOS)
+echo 'export NODE_AUTH_TOKEN=ghp_yourtokenhere' >> ~/.zshrc
+source ~/.zshrc
+
+# bash
+echo 'export NODE_AUTH_TOKEN=ghp_yourtokenhere' >> ~/.bashrc
+source ~/.bashrc
+```
+
+On Windows (PowerShell), set it for the current session with `$env:NODE_AUTH_TOKEN = "ghp_yourtokenhere"`, or add it as a persistent user environment variable via System Properties → Environment Variables.
+
+> **Never commit your token or edit the committed `.npmrc`** to inline it. `.npmrc` reads `${NODE_AUTH_TOKEN}` on purpose so the same file works locally and in CI, where `actions/setup-node` injects the value automatically.
+
+Verify the variable is set before moving on:
+
+```bash
+echo $NODE_AUTH_TOKEN   # should print your token
+```
+
+### 3. Install Dependencies
 
 ```bash
 pnpm install
@@ -46,7 +88,7 @@ pnpm install
 
 This will install all dependencies for all packages and apps in the monorepo. Thanks to pnpm workspaces, shared dependencies are efficiently linked.
 
-### 3. Set Up Environment Variables
+### 4. Set Up Environment Variables
 
 First, create a `.env` file in the **root directory** of the repository:
 
@@ -79,11 +121,12 @@ The `pull-secrets` script will:
 pnpm dev
 ```
 
-This starts all applications in development mode:
+This starts both applications in development mode:
 
 - **Web app**: http://localhost:3000
 - **Admin app**: http://localhost:3001
-- **Docs**: http://localhost:3002
+
+> This documentation site lives in a separate repo (`nexus-docs`) and is run from there with its own `pnpm dev` — see that repo's README. Note that it also defaults to port 3000, so don't run it alongside `apps/web` without changing one of the ports.
 
 ### Start Specific Apps
 
@@ -95,9 +138,6 @@ pnpm dev:web
 
 # Admin app only
 pnpm dev:admin
-
-# Documentation only
-pnpm dev:docs
 ```
 
 ## Building for Production
@@ -113,35 +153,41 @@ pnpm build
 ```bash
 pnpm build --filter=web
 pnpm build --filter=admin
-pnpm build --filter=docs
 ```
 
 ## Common Commands
 
 ```bash
 # Development
-pnpm dev                    # Start all apps
-pnpm dev:web               # Start main website only
-pnpm dev:admin             # Start admin app only
-pnpm dev:docs              # Start documentation only
+pnpm dev                    # Start web + admin
+pnpm dev:web                # Start main website only
+pnpm dev:admin              # Start admin app only
 
 # Building
-pnpm build                 # Build all packages
+pnpm build                  # Build all packages
 
 # Code Quality
-pnpm lint                  # Lint all packages
-pnpm format                # Format code with Prettier
+pnpm lint                   # Lint all packages (eslint --max-warnings 0; warnings fail)
+pnpm check-types            # Type-check the whole workspace
+pnpm format                 # Format code with Prettier
+
+# Secrets & Database
+pnpm pull-secrets           # Sync env vars from Infisical into apps/*/.env.local
+pnpm migrate                # Apply database migrations
+pnpm migrate:down           # Roll back the last migration
+pnpm migrate:create <name>  # Scaffold a new migration
+pnpm migrate:check          # Check migration status
 
 # UI Components
-pnpm ui:add button         # Add shadcn button component
-pnpm ui:add form           # Add shadcn form components
+pnpm ui:add button          # Add shadcn button component to @uwdsc/ui
+pnpm ui:add form            # Add shadcn form components to @uwdsc/ui
 ```
 
 ## Next Steps
 
-- Learn about the [Architecture](/architecture) of the monorepo
-- Follow our [Guides](/guides) for common development tasks
-- Explore the [Packages](/packages) documentation
+- Learn about the [Architecture](/architecture/overview) of the monorepo
+- Follow our [Guides](/guides/adding-components) for common development tasks
+- Explore the [Packages](/packages/ui) documentation
 
 ## Troubleshooting
 
@@ -152,9 +198,26 @@ If you get an error that a port is already in use, you can either:
 1. Kill the process using that port
 2. Change the port in the app's `package.json` dev script
 
+### `401 Unauthorized` / `E401` Installing `@uw-datasci/raft`
+
+This means pnpm couldn't authenticate to GitHub Packages. Check, in order:
+
+1. `NODE_AUTH_TOKEN` is set in **this shell** — run `echo $NODE_AUTH_TOKEN` (a new terminal won't have it unless it's in your shell profile; see [Authenticate to GitHub Packages](#2-authenticate-to-github-packages)).
+2. The token is a **classic** PAT, not fine-grained — GitHub Packages doesn't accept fine-grained tokens.
+3. The `read:packages` scope is checked on the token.
+4. The token hasn't expired.
+5. Your GitHub account is a member of the `uw-datasci` org.
+
+Then retry:
+
+```bash
+pnpm store prune
+pnpm install
+```
+
 ### pnpm Installation Issues
 
-If you encounter issues with pnpm, try:
+If you encounter other issues with pnpm, try:
 
 ```bash
 # Clear pnpm cache
@@ -172,6 +235,7 @@ If you see TypeScript errors, try:
 
 ```bash
 # Clean and rebuild
-pnpm clean
+rm -rf apps/*/.next
+pnpm install
 pnpm build
 ```

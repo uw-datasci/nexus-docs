@@ -7,14 +7,16 @@ Shared types and utilities used across the monorepo (web, admin, and server pack
 The `@uwdsc/common` package holds:
 
 - **Types** - Domain entities, API request/response types, shared enums, and error types
-- **Utils** - ApiResponse (standardized API responses), filterPartialUpdate, and other helpers
+- **Utils** - filterPartialUpdate and other helpers
+- **Constants** - Role/faculty/membership enums and helpers, and shared route paths
 
 **Location**: `packages/common/`
 
 **Exports**:
 
 - `@uwdsc/common/types` - All shared types
-- `@uwdsc/common/utils` - ApiResponse, filterPartialUpdate, and other utilities
+- `@uwdsc/common/utils` - filterPartialUpdate and other utilities
+- `@uwdsc/common/constants` - Roles (`isAdmin`, `readRoleClaims`, `ADMIN_ROLES`), faculty, membership, application, and route constants
 
 ## Types (`@uwdsc/common/types`)
 
@@ -58,36 +60,30 @@ import { ApiError } from "@uwdsc/common/types";
 
 When adding new API or entity types, add them under `packages/common/src/types/api/` or `entities/` and export from the corresponding `index.ts`.
 
-## Utils (`@uwdsc/common/utils`)
+## Constants (`@uwdsc/common/constants`)
 
-### ApiResponse
+Shared enums, role helpers, and route constants used by both apps and server code.
 
-Standardized helpers for Next.js API route responses. Use these instead of building `NextResponse.json()` manually so status codes and body shapes are consistent.
+**Import**: `import { isAdmin, readRoleClaims, ADMIN_ROLES } from "@uwdsc/common/constants";`
 
-**Import**: `import { ApiResponse } from "@uwdsc/common/utils";`
+- **roles** - `ROLE_VALUES`, `ROLE_LABELS`, `ADMIN_ROLES` (the set allowed into the admin app), `isAdmin(role)`, `isPres(role)`, `isAlum(role)`, `readRoleClaims(appMetadata)` (parses the role claims Supabase mirrors into `app_metadata`), `roleRequiresSubteam(role)`
+- **faculty** - `FACULTY_VALUES`, `FACULTY_LABELS`
+- **membership** - Membership-related enum values and labels
+- **application** - Application-related constants
+- **routes** - Shared path constants (e.g. `WEB_COMPLETE_PROFILE_PATH`)
 
-| Method                                       | Status | Use                                                 |
-| -------------------------------------------- | ------ | --------------------------------------------------- |
-| `ApiResponse.ok(data)`                       | 200    | Success with optional JSON body                     |
-| `ApiResponse.badRequest(message?, error?)`   | 400    | Validation or client error                          |
-| `ApiResponse.unauthorized(message?, error?)` | 401    | Not authenticated                                   |
-| `ApiResponse.notFound(error?)`               | 404    | Resource not found                                  |
-| `ApiResponse.serverError(message?, error?)`  | 500    | Server error; `message` can be `Error` or `unknown` |
-| `ApiResponse.json(data, status?, init?)`     | custom | Custom status or body                               |
-
-Example:
+Example - the admin `withAdmin` guard uses these directly to check a role from the Supabase session:
 
 ```typescript
-import { ApiResponse } from "@uwdsc/common/utils";
+import { isAdmin, readRoleClaims } from "@uwdsc/common/constants";
 
-export async function GET() {
-  const profile = await profileService.getProfileByUserId(user.id);
-  if (!profile) return ApiResponse.notFound("Profile not found");
-  return ApiResponse.ok(profile);
-}
+const claims = readRoleClaims(user.app_metadata);
+if (!isAdmin(claims.role)) return RaftResponse.forbidden("You must be admin to access");
 ```
 
-See [Creating API Endpoints](/guides/creating-api#standardized-responses-apiresponse) for more detail.
+## Utils (`@uwdsc/common/utils`)
+
+> Looking for standardized API responses? That's [`RaftResponse`](/packages/raft) from `@uw-datasci/raft` now, not this package - `ApiResponse` was removed from `@uwdsc/common/utils` when the repo migrated to Raft.
 
 ### filterPartialUpdate
 
@@ -121,37 +117,48 @@ const { filteredData, columns } = filterPartialUpdate(
 ```
 packages/common/
 └── src/
+    ├── constants/
+    │   ├── index.ts         # Re-exports application, faculty, membership, roles, routes
+    │   ├── roles.ts         # ADMIN_ROLES, isAdmin, isPres, readRoleClaims, ...
+    │   ├── faculty.ts
+    │   ├── membership.ts
+    │   ├── application.ts
+    │   └── routes.ts
     ├── types/
     │   ├── index.ts         # Re-exports entities, api, shared
     │   ├── entities/        # Profile, Application, File, Membership, Team
     │   ├── api/             # API request/response types
-    │   └── shared/          # enums, errors, common, auth
+    │   └── shared/          # enums, errors (ApiError), common, auth
     └── utils/
         ├── index.ts
-        ├── apiResponse.ts   # ApiResponse class
-        ├── serviceResponse.ts
-        └── filterPartialUpdate.ts
+        ├── filterPartialUpdate.ts
+        ├── event.ts
+        ├── hiring.ts
+        ├── profile.ts
+        ├── safeRedirect.ts
+        └── terms.ts
 ```
 
 ## Dependencies
 
-`@uwdsc/common` depends on `next` (for `NextResponse` in ApiResponse). It is used by `@uwdsc/core`, `@uwdsc/admin`, and the web and admin apps.
+`@uwdsc/common` has **no runtime dependencies** of its own - it's pure types, constants, and utility functions, so it can be imported from client or server code without pulling anything else in. It is used by `@uwdsc/core`, `@uwdsc/admin`, and the web and admin apps.
 
 ## Best practices
 
 ### Do
 
 - Define API and entity types in `@uwdsc/common/types` and import them in both client and server code
-- Use `ApiResponse` in all API routes for consistent responses
-- Use `ApiError` from `@uwdsc/common/types` in services when throwing typed errors
+- Use `ApiError` from `@uwdsc/common/types` in services when throwing typed errors - `withRaftRoute` (see [Raft](/packages/raft)) translates it into the right HTTP status automatically
+- Use the role helpers (`isAdmin`, `readRoleClaims`, `ADMIN_ROLES`) from `@uwdsc/common/constants` instead of re-deriving role checks
 - Use `filterPartialUpdate` when building dynamic PATCH/update payloads from partial input
 
 ### Don't
 
 - Define duplicate types in apps or server packages; add shared types to common
-- Return raw `NextResponse.json()` in API routes when a standard status applies; use `ApiResponse` instead
+- Build standardized API responses here - that's `RaftResponse` from `@uw-datasci/raft` now
 
 ## Next steps
 
-- [Creating API Endpoints](/guides/creating-api) - Using ApiResponse and types in routes
+- [Raft](/packages/raft) - `RaftResponse` / `withRaftRoute`, the response layer that replaced `ApiResponse`
+- [Creating API Endpoints](/guides/creating-api) - Using types and Raft together in routes
 - [Server Package](/packages/server) - How core and admin use common types and utils
