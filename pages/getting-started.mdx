@@ -40,12 +40,13 @@ cd uwdsc-website-v3
 
 ### 2. Authenticate to GitHub Packages
 
-`apps/web` and `apps/admin` depend on [`@uw-datasci/raft`](/packages/raft), UWDSC's private SDK for standardized API responses and error quarantine. It's published to **GitHub Packages** (`npm.pkg.github.com`) under the `@uw-datasci` scope, not to the public npm registry, so `pnpm install` needs a GitHub token before it can resolve that dependency. This is configured in the repo's committed `.npmrc`:
+`apps/web` and `apps/admin` depend on [`@uw-datasci/raft`](/packages/raft), UWDSC's private SDK for standardized API responses and error quarantine. It's published to **GitHub Packages** (`npm.pkg.github.com`) under the `@uw-datasci` scope, not to the public npm registry, so `pnpm install` needs a GitHub token before it can resolve that dependency. The repo's committed `.npmrc` only routes the scope to that registry:
 
 ```ini
 @uw-datasci:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
 ```
+
+The token itself is configured **per machine**, not in the repo (see below).
 
 > **Token type matters**: GitHub Packages' npm registry only supports a **classic** personal access token — [fine-grained tokens are not supported](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry) for this. Make sure you create the classic kind below.
 
@@ -72,12 +73,24 @@ source ~/.bashrc
 
 On Windows (PowerShell), set it for the current session with `$env:NODE_AUTH_TOKEN = "ghp_yourtokenhere"`, or add it as a persistent user environment variable via System Properties → Environment Variables.
 
-> **Never commit your token or edit the committed `.npmrc`** to inline it. `.npmrc` reads `${NODE_AUTH_TOKEN}` on purpose so the same file works locally and in CI, where `actions/setup-node` injects the value automatically.
-
-Verify the variable is set before moving on:
+**Point your user-level `~/.npmrc` at the variable.** pnpm 12+ refuses to expand `${...}` variables in a repository's `.npmrc` auth settings (you'd see `Ignored project-level auth setting "//npm.pkg.github.com/:_authToken"`), so the auth line has to live in your home directory instead. The single quotes matter: they write the literal `${NODE_AUTH_TOKEN}` reference, so the token itself never lands in the file.
 
 ```bash
-echo $NODE_AUTH_TOKEN   # should print your token
+# macOS / Linux
+echo '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}' >> ~/.npmrc
+```
+
+On Windows (PowerShell): `Add-Content "$HOME\.npmrc" '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}'`
+
+You only need to do this once per machine; it covers every UWDSC repo.
+
+> **Never commit your token or add the auth line to a repo's `.npmrc`.** In CI, `actions/setup-node` (with `registry-url`) writes its own user-level credentials, so the committed `.npmrc` only needs the scope line.
+
+Verify the setup before moving on:
+
+```bash
+echo $NODE_AUTH_TOKEN                    # should print your token
+pnpm view @uw-datasci/raft version       # should print a version, not a 401
 ```
 
 ### 3. Install Dependencies
@@ -202,11 +215,14 @@ If you get an error that a port is already in use, you can either:
 
 This means pnpm couldn't authenticate to GitHub Packages. Check, in order:
 
-1. `NODE_AUTH_TOKEN` is set in **this shell** — run `echo $NODE_AUTH_TOKEN` (a new terminal won't have it unless it's in your shell profile; see [Authenticate to GitHub Packages](#2-authenticate-to-github-packages)).
-2. The token is a **classic** PAT, not fine-grained — GitHub Packages doesn't accept fine-grained tokens.
-3. The `read:packages` scope is checked on the token.
-4. The token hasn't expired.
-5. Your GitHub account is a member of the `uw-datasci` org.
+1. `~/.npmrc` contains `//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}`. If `pnpm install` prints `Ignored project-level auth setting`, the auth line is still in a repo's `.npmrc` instead — move it to `~/.npmrc` (see [Authenticate to GitHub Packages](#2-authenticate-to-github-packages)).
+2. `NODE_AUTH_TOKEN` is set in **this shell** — run `echo $NODE_AUTH_TOKEN` (a new terminal won't have it unless it's in your shell profile; see [Authenticate to GitHub Packages](#2-authenticate-to-github-packages)).
+3. The token is a **classic** PAT, not fine-grained — GitHub Packages doesn't accept fine-grained tokens.
+4. The `read:packages` scope is checked on the token.
+5. The token hasn't expired or been revoked — `curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: token $NODE_AUTH_TOKEN" https://api.github.com/user` should print `200`.
+6. Your GitHub account is a member of the `uw-datasci` org.
+
+Note that `pnpm install` can succeed with a bad token when the lockfile is up to date and the package is already in your store; `pnpm view @uw-datasci/raft version` always hits the registry.
 
 Then retry:
 
