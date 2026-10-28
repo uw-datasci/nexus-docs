@@ -1,0 +1,91 @@
+# Recruiting
+
+How to run exec hiring in the admin portal, from locking next term's leadership to publishing the new team. Everything lives under **Recruiting** in the admin sidebar.
+
+> New to it? Open Recruiting and take the guided tour. It starts on your first visit, and the **?** button next to the title replays it.
+
+## Who can do what
+
+| | Presidents | VPs |
+| --- | --- | --- |
+| Lock leadership, edit it after the lock | Yes | No |
+| Dates, offer window, open/close positions | Yes | No |
+| Write questions | All positions | Their subteam's positions |
+| Read every candidate, application and note | Yes | Yes |
+| Move candidates on the Board | Anyone | Their subteam's exec positions |
+| Applicants for VP seats opened to the public | Yes | Read only |
+| Offers, rejections, finalize | Yes | No |
+
+Execs and members don't see Recruiting. Before the lock, only current presidents can open it (Leadership tab); VPs see a "Recruiting opens soon" page.
+
+## How a cycle runs
+
+1. **Lock leadership.** Presidents confirm next term's presidents and VPs and pick which exec positions are hiring. Locking applies roles right away: new VPs get access, outgoing leaders become alumni.
+2. **Set up.** Presidents set the application dates and the offer window (48 hours by default). VPs write questions for their positions.
+3. **Applications open.** Everyone applies through the one form on the website, including current execs and alumni.
+4. **Review.** VPs move their candidates through *In Review → Interviewing → Wanted / Not Wanted* on the Board.
+5. **Offers.** Presidents send offers to Wanted candidates, track answers, then send rejections.
+6. **Finalize.** Presidents confirm the new team. Roles update and the website's team page switches over.
+
+The **Overview** tab shows where the cycle is, a "Needs your attention" list and your checklist. Both update on their own.
+
+## Presidents
+
+### Lock leadership
+
+In **Leadership**, add next term's presidents, set each subteam's VPs (co-VPs share one seat) or open the seat to the public, and pick the exec positions that are hiring. **Lock** is enabled once nothing is undecided. The confirm dialog lists every role change before it happens. Later edits apply roles immediately, after the same confirm.
+
+### Set up
+
+In **Setup**, set the release date and deadlines, the offer window, and which positions are open (and how many seats each has). Every open position should have at least one question before applications open; the Overview flags any that don't.
+
+### Send offers
+
+In **Offers**, **Ready to offer** lists Wanted candidates by subteam with the seats left. Candidates wanted by two subteams appear under **Conflicts**; you choose which offer to send (or both: accepting one declines the other).
+
+1. Click **Send offer**, check the email preview, optionally add a personal line, and send.
+2. The candidate gets **Accept** and **Decline** buttons that open a page on the website. They confirm their answer there, and it shows up on the Offers page and the Board as "via link", with any note they left.
+3. If they reply by email instead, use **⋯ → Mark accepted / Mark declined**.
+
+Each offer expires after the offer window. Expired offers move to **Expired**, where you can **Resend for 48h** (a new link with a new deadline; the old link stops working) or **Release seat**. From a sent offer's **⋯** menu you can also **Resend with new deadline** or **Withdraw offer** (the card moves to Declined; you can email them or turn that off if it went out by mistake).
+
+### Send rejections
+
+**Send rejections** emails everyone who isn't moving forward, one email each. Toggle which groups to include (Not Wanted, still In Review, still Interviewing); candidates who are Wanted or have an offer elsewhere are skipped. You can also reject one candidate from their drawer. Every email is previewed first, and emails can't be unsent.
+
+### Finalize
+
+**Finalize** shows who's joining, returning and leaving, plus a preview of the team page. It's blocked until there's at least one president, no one is listed twice, and every position has a subteam. Unanswered offers are closed when you finalize (those candidates get an email). Confirm with the all-hands When2Meet link; the new team gets a welcome email. Finalizing can't be undone from Recruiting.
+
+## VPs
+
+### Questions
+
+In **Setup**, add questions for your subteam's positions before applications open. Other subteams' questions are read-only.
+
+### Review on the Board
+
+The Board has one card per candidate per position, in columns by status. **My positions** is on by default, so you only see your subteam's candidates; turn it off to read everyone's (you can open them, but only their own VP can move them).
+
+- **Move a card** by dragging it to another review column. Columns you can't drop into dim. An **Undo** button shows for 6 seconds.
+- **Open a card** to read the full application, the candidate's other choices, past exec roles, notes and activity. You can change the status from the drawer too.
+- **Leave notes** in the Notes tab, including interview notes. Everyone with access sees every note; you can edit or delete your own.
+- Mark everyone **Wanted** or **Not Wanted**. No one is emailed until presidents send offers and rejections, and dragging never sends an email.
+
+On a phone, the Board is a list: pick a status at the top, tap a card to open it, and use the button beside each card to move it.
+
+## Common questions
+
+**A candidate answered by email, not the link.** Use **Mark accepted / Mark declined** on the Offers page or in their drawer.
+
+**I sent an offer to the wrong person.** Withdraw it from the **⋯** menu and turn off the email, then contact them yourself.
+
+**I moved a card by mistake.** Use **Undo** on the toast, or move it back. Cards in offer stages can't go back to review columns.
+
+**A VP can't see Recruiting.** Before the lock only presidents can. After the lock, check their role is VP (`admin`) with the right subteam in Leadership.
+
+**A new VP seat was opened to the public.** Presidents review those applicants. Accepting that offer makes the person a VP right away.
+
+## For developers
+
+The rules (status moves, who can do what, seats, finalize plan, overview) live in `@uwdsc/common/recruiting`. API routes are under `apps/admin/app/api/recruiting`, behind the `withRecruiting` guard. The public offer page is `apps/web/app/offer/[token]`. See the [Application Platform spec](https://app.notion.com/p/uw-dsc/Application-Platform-3f51b70395fc8196921fd9635129ff40) for the full design.
