@@ -129,12 +129,15 @@ packages/common/
     │   ├── entities/        # Profile, Application, File, Membership, Team
     │   ├── api/             # API request/response types
     │   └── shared/          # enums, errors (ApiError), common, auth
+    ├── recruiting/          # Recruiting rules: status moves, capabilities, offers, finalize, overview
+    ├── schemas/             # Zod request schemas (recruiting, ...)
     └── utils/
         ├── index.ts
-        ├── filterPartialUpdate.ts
+        ├── email.ts
         ├── event.ts
-        ├── hiring.ts
+        ├── filterPartialUpdate.ts
         ├── profile.ts
+        ├── recruiting.ts    # Offer deadlines, names
         ├── safeRedirect.ts
         └── terms.ts
 ```

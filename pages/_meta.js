@@ -7,6 +7,7 @@ export default {
   architecture: "Architecture",
   guides: "Guides",
   packages: "Packages",
+  admin: "Admin How-To",
   changelog: "Timeline",
   unauthorized: {
     display: "hidden",
