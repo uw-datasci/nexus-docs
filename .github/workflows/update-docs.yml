@@ -42,6 +42,13 @@ on:
         type: string
         default: ""
 
+# Run one docs update at a time, in order, so each run can stack on the PR the
+# previous run opened. `queue: max` keeps every pending run instead of cancelling
+# all but the newest.
+concurrency:
+  group: update-docs
+  queue: max
+
 jobs:
   update-docs:
     runs-on: ubuntu-latest
@@ -58,12 +65,43 @@ jobs:
       DOCS_MODE: ${{ github.event.client_payload.docs_mode || inputs.docs_mode || 'changelog' }}
 
     steps:
+      # Build on the newest open auto-docs PR instead of main, so docs PRs from
+      # different apps stack on each other instead of conflicting.
+      - name: Resolve Stack Base
+        id: stack
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          name="${SOURCE_REPO##*/}"
+          branch="auto-docs/${name}-${PR_NUMBER}"
+
+          latest=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open \
+            --author app/github-actions --limit 100 \
+            --json number,headRefName,createdAt \
+            --jq "[.[] | select((.headRefName | startswith(\"auto-docs/\")) and .headRefName != \"$branch\")]
+                  | sort_by(.createdAt) | last // empty | \"\(.number) \(.headRefName)\"")
+
+          if [ -n "$latest" ]; then
+            base_pr="${latest%% *}"
+            base="${latest#* }"
+            echo "Stacking on #$base_pr ($base)"
+          else
+            base_pr=""
+            base="main"
+            echo "No open auto-docs PRs; branching off main"
+          fi
+
+          {
+            echo "name=$name"
+            echo "branch=$branch"
+            echo "base=$base"
+            echo "base_pr=$base_pr"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Checkout Docs
         uses: actions/checkout@v6
-
-      - name: Resolve Source Repo Name
-        id: source
-        run: echo "name=${SOURCE_REPO##*/}" >> "$GITHUB_OUTPUT"
+        with:
+          ref: ${{ steps.stack.outputs.base }}
 
       - name: Checkout Source Repository
         uses: actions/checkout@v6
@@ -111,13 +149,14 @@ jobs:
         run: rm -rf source changes.diff
 
       - name: Create PR with Doc Updates
+        id: cpr
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "Update docs for ${{ env.SOURCE_REPO }}#${{ env.PR_NUMBER }}"
           title: "📚 Auto-Docs Update (${{ env.APP_NAME }} #${{ env.PR_NUMBER }})"
-          branch: "auto-docs/${{ steps.source.outputs.name }}-${{ env.PR_NUMBER }}"
-          base: main
+          branch: ${{ steps.stack.outputs.branch }}
+          base: ${{ steps.stack.outputs.base }}
           delete-branch: true
           body: |
             ### 🤖 Automated Documentation Update
@@ -126,3 +165,17 @@ jobs:
 
             **App:** ${{ env.APP_NAME }}
             **Changes:** Updated the docs to match the merged code changes.
+
+      # Add the new PR to the GitHub stack its base PR is in (or start one), so the
+      # chain can be reviewed in the stack view and merged with `gh stack merge`.
+      # Non-fatal: the PR already targets the right base even if linking fails.
+      - name: Link Into Stack
+        if: steps.stack.outputs.base_pr != '' && steps.cpr.outputs.pull-request-number != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_PR: ${{ steps.stack.outputs.base_pr }}
+          NEW_PR: ${{ steps.cpr.outputs.pull-request-number }}
+        run: |
+          gh extension install github/gh-stack
+          gh stack link "$BASE_PR" "$NEW_PR"
