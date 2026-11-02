@@ -76,25 +76,25 @@ apps/web/
 
 ### `apps/admin` - Admin App
 
-Admin dashboard and CXC (AI hackathon) application and review system.
+Admin portal for execs, VPs and presidents.
 
-**Purpose**: Admin-only features: member management, CXC applications table, review interface, superadmin dashboard and leaderboard
+**Purpose**: Member management, events, support, campaigns, logistics/onboarding, and Recruiting (exec hiring from leadership lock to finalize). See [Recruiting](/admin/recruiting).
 
 **Tech Stack**: Next.js 16, React 19, TypeScript, Tailwind, `@uwdsc/ui`, `@uwdsc/core`, `@uwdsc/admin`, `@uwdsc/db`
 
 **Key Features**:
 
 - Member listing and management
-- CXC application submissions table and details
-- Review interface with scoring
-- Superadmin dashboard (analytics, RSVP timeline) and review leaderboard
+- Recruiting: leadership lock, setup, review board, offers by email link, finalize
+- Events, support inbox and email campaigns
+- Exec onboarding (logistics)
 
 **Structure**:
 
 ```
 apps/admin/
 ├── app/                 # Next.js App Router
-│   ├── (admin)/         # Admin dashboard, applications, review, leaderboard
+│   ├── (admin)/         # Members, recruiting, events, support, campaigns, logistics
 │   ├── api/             # API routes
 │   ├── login/           # Login page
 │   └── unauthorized/    # Unauthorized page
